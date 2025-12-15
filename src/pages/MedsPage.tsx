@@ -248,7 +248,7 @@ export default function MedsPage() {
         {loading ? "Cargando..." : `Mostrando ${filteredItems.length} de ${items.length} medicamentos`}
       </Typography>
 
-      <Table headers={user?.role === "admin" ? ["Medicamento", "Cantidad", "Unidad", "Dosis", "Caducidad", "Estado", "Código", "Acciones"] : ["Medicamento", "Cantidad", "Unidad", "Dosis", "Caducidad", "Estado", "Código"]}>
+      <Table headers={["Medicamento", "Cantidad", "Unidad", "Dosis", "Caducidad", "Estado", "Código"]}>
         <AnimatePresence initial={false}>
           {filteredItems.map(med => (
             <motion.tr
@@ -269,18 +269,6 @@ export default function MedsPage() {
               <td style={{ padding: 8, fontFamily: "monospace", fontSize: 12 }}>
                 {med.barcode || "-"}
               </td>
-              {user?.role === "admin" && (
-                <td style={{ padding: 8 }}>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => handleDeleteMed(med.id, med.name)}
-                    title="Eliminar medicamento"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </td>
-              )}
             </motion.tr>
           ))}
         </AnimatePresence>
