@@ -46,3 +46,6 @@ PRINT '';
 PRINT '✓ Verificación completada. Las columnas nombre_medicamento y unidad están listas.';
 GO
 
+
+
+

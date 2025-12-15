@@ -125,11 +125,11 @@ router.delete('/:id', async (req, res) => {
 
     // Si la contraseña del admin es correcta, eliminar el usuario
     try {
-      const deleted = await userService.deleteUser(req.params.id);
-      if (!deleted) {
+    const deleted = await userService.deleteUser(req.params.id);
+    if (!deleted) {
         return res.status(404).json({ error: 'Usuario no encontrado o no se pudo eliminar' });
-      }
-      res.json({ message: 'Usuario eliminado correctamente' });
+    }
+    res.json({ message: 'Usuario eliminado correctamente' });
     } catch (error: any) {
       console.error('Error al eliminar usuario:', error);
       return res.status(500).json({ error: error.message || 'Error al eliminar el usuario' });

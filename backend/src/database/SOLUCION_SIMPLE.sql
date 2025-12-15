@@ -40,3 +40,6 @@ SELECT TOP 10 * FROM medications ORDER BY fecha_creacion DESC;
 
 
 
+
+
+

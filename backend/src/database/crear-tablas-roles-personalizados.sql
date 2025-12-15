@@ -1,7 +1,7 @@
 -- ============================================
 -- TABLAS PARA ROLES PERSONALIZADOS Y PERMISOS
 -- ============================================
-use AsiloDB
+use db_ac1425_asilodb
 go
 -- Tabla de Roles Personalizados
 IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[roles_personalizados]') AND type in (N'U'))
@@ -100,3 +100,6 @@ BEGIN
     ALTER TABLE entry_items ADD unidad NVARCHAR(50) NULL;
 END
 GO
+
+
+

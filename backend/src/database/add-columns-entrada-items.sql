@@ -59,3 +59,6 @@ PRINT '';
 PRINT '✓ Verificación completada. Las columnas nombre_medicamento, unidad y fecha_caducidad están listas.';
 GO
 
+
+
+

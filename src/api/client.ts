@@ -20,7 +20,7 @@ async function request<T>(
       : `${API_BASE_URL}${endpoint}`;
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+        'Content-Type': 'application/json',
       ...(options?.headers as Record<string, string> || {}),
     };
     

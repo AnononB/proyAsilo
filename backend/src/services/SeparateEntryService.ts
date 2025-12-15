@@ -194,7 +194,7 @@ export class SeparateEntryService {
       // Si falla por columnas faltantes, usar JOIN con medications
       if (error.message && (error.message.includes('nombre_medicamento') || error.message.includes('unidad') || error.message.includes('fecha_caducidad') || error.message.includes('Invalid column name'))) {
         return await query<{ medicationId: ID; qty: number; medicationName?: string; unit?: string; fechaCaducidad?: string }>(`
-          SELECT 
+      SELECT 
             ei.medicamento_id as medicationId,
             ei.cantidad as qty,
             m.nombre as medicationName,
@@ -203,7 +203,7 @@ export class SeparateEntryService {
           FROM entrada_items ei
           LEFT JOIN medications m ON ei.medicamento_id = m.id
           WHERE ei.entrada_id = @entradaId
-        `, { entradaId });
+    `, { entradaId });
       }
       throw error;
     }
@@ -489,15 +489,15 @@ export class SeparateEntryService {
           // Si falla por columnas faltantes, insertar sin ellas
           if (error.message && (error.message.includes('nombre_medicamento') || error.message.includes('unidad') || error.message.includes('fecha_caducidad') || error.message.includes('Invalid column name'))) {
             console.warn('⚠️ Columnas nombre_medicamento, unidad o fecha_caducidad no existen en entrada_items. Insertando sin ellas.');
-            await execute(`
-              INSERT INTO entrada_items (id, entrada_id, medicamento_id, cantidad)
-              VALUES (@itemId, @entradaId, @medicationId, @qty)
-            `, {
-              itemId: uuidv4(),
-              entradaId: id,
+        await execute(`
+          INSERT INTO entrada_items (id, entrada_id, medicamento_id, cantidad)
+          VALUES (@itemId, @entradaId, @medicationId, @qty)
+        `, {
+          itemId: uuidv4(),
+          entradaId: id,
               medicationId: actualMedicationId,
-              qty: item.qty
-            });
+          qty: item.qty
+        });
           } else {
             throw error;
           }

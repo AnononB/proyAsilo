@@ -535,16 +535,16 @@ export default function UsersPage() {
             />
 
             {role && (
-              <Alert severity="warning">
-                <Typography variant="body2" fontWeight={600}>Permisos del rol seleccionado:</Typography>
-                <Typography variant="caption" component="div">
-                  {role === "admin" && "• Acceso completo al sistema."}
-                  {role === "doctor" && "• Gestión de pacientes y medicamentos, prescripciones."}
-                  {role === "nurse" && "• Registro de medicamentos y cuidados de pacientes."}
-                  {role === "reception" && "• Gestión de entradas/salidas y objetos personales."}
+            <Alert severity="warning">
+              <Typography variant="body2" fontWeight={600}>Permisos del rol seleccionado:</Typography>
+              <Typography variant="caption" component="div">
+                {role === "admin" && "• Acceso completo al sistema."}
+                {role === "doctor" && "• Gestión de pacientes y medicamentos, prescripciones."}
+                {role === "nurse" && "• Registro de medicamentos y cuidados de pacientes."}
+                {role === "reception" && "• Gestión de entradas/salidas y objetos personales."}
                   {customRoles.some(cr => cr.id === role) && "• Permisos personalizados según la configuración del rol."}
-                </Typography>
-              </Alert>
+              </Typography>
+            </Alert>
             )}
 
             <Stack direction="row" spacing={2}>

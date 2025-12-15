@@ -274,10 +274,10 @@ export default function ObjectsPage() {
     <Page>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5" fontWeight={700}>Objetos personales</Typography>
-        <Button variant="text" onClick={loadData} disabled={loading || saving}>
-          Actualizar lista
-        </Button>
-      </Stack>
+          <Button variant="text" onClick={loadData} disabled={loading || saving}>
+            Actualizar lista
+          </Button>
+        </Stack>
 
       <Alert severity="info" sx={{ mb: 2 }}>
         <Typography variant="body2" component="span">
@@ -420,18 +420,18 @@ export default function ObjectsPage() {
           <>
             <MenuItem onClick={() => handleContextMenuAction('edit', contextMenu.object!)}>
               <ListItemIcon>
-                <EditIcon fontSize="small" />
+                              <EditIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText>Modificar</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => handleContextMenuAction('delete', contextMenu.object!)}>
               <ListItemIcon>
-                <DeleteIcon fontSize="small" />
+                              <DeleteIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText>Eliminar</ListItemText>
             </MenuItem>
           </>
-        )}
+            )}
       </Menu>
 
       {/* Diálogo de edición */}

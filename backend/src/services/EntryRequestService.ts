@@ -170,7 +170,7 @@ export class EntryRequestService {
             console.error(`Error obteniendo items para lote ${i}-${i + BATCH_SIZE}:`, fallbackError);
           }
         } else {
-          console.error(`Error obteniendo items para lote ${i}-${i + BATCH_SIZE}:`, error);
+        console.error(`Error obteniendo items para lote ${i}-${i + BATCH_SIZE}:`, error);
         }
       }
     }
@@ -454,7 +454,7 @@ export class EntryRequestService {
       if (error.message && (error.message.includes('nombre_medicamento') || error.message.includes('unidad') || error.message.includes('Invalid column name'))) {
         console.warn('⚠️ Columnas nombre_medicamento o unidad no existen. Recuperando desde medications.');
         const items = await query<{ medicationId: ID; qty: number; dosisRecomendada?: string; frecuencia?: string; fechaCaducidad?: string; medicationName?: string; unit?: string }>(`
-          SELECT 
+      SELECT 
             ei.medicamento_id as medicationId,
             ei.cantidad as qty,
             ei.dosis_recomendada as dosisRecomendada,
@@ -465,8 +465,8 @@ export class EntryRequestService {
           FROM entry_items ei
           LEFT JOIN medications m ON ei.medicamento_id = m.id
           WHERE ei.solicitud_id = @entryRequestId
-        `, { entryRequestId });
-        return items;
+    `, { entryRequestId });
+    return items;
       }
       throw error;
     }
@@ -505,18 +505,18 @@ export class EntryRequestService {
       // Si falla por columnas faltantes, intentar sin nombre_medicamento y unidad
       if (error.message && (error.message.includes('nombre_medicamento') || error.message.includes('unidad') || error.message.includes('Invalid column name'))) {
         console.warn('⚠️ Columnas nombre_medicamento o unidad no existen. Insertando sin ellas. Ejecuta el script SQL para agregarlas.');
-        await execute(`
-          INSERT INTO entry_items (id, solicitud_id, medicamento_id, cantidad, dosis_recomendada, frecuencia, fecha_caducidad)
-          VALUES (@id, @entryRequestId, @medicationId, @qty, @dosisRecomendada, @frecuencia, @fechaCaducidad)
-        `, {
-          id,
-          entryRequestId: data.entryRequestId,
-          medicationId: data.medicationId,
-          qty: data.qty,
-          dosisRecomendada: data.dosisRecomendada || null,
-          frecuencia: data.frecuencia || null,
-          fechaCaducidad: data.fechaCaducidad || null
-        });
+    await execute(`
+      INSERT INTO entry_items (id, solicitud_id, medicamento_id, cantidad, dosis_recomendada, frecuencia, fecha_caducidad)
+      VALUES (@id, @entryRequestId, @medicationId, @qty, @dosisRecomendada, @frecuencia, @fechaCaducidad)
+    `, {
+      id,
+      entryRequestId: data.entryRequestId,
+      medicationId: data.medicationId,
+      qty: data.qty,
+      dosisRecomendada: data.dosisRecomendada || null,
+      frecuencia: data.frecuencia || null,
+      fechaCaducidad: data.fechaCaducidad || null
+    });
       } else {
         throw error;
       }
