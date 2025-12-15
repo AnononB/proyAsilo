@@ -15,6 +15,25 @@ export interface AuditLog {
 }
 
 export class AuditService {
+  // Verificar si la tabla audit_log existe
+  private async tableExists(): Promise<boolean> {
+    try {
+      const result = await query<{ exists: number }>(`
+        SELECT CASE 
+          WHEN EXISTS (
+            SELECT * FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = 'audit_log'
+          ) THEN 1 
+          ELSE 0 
+        END as exists
+      `);
+      return result.length > 0 && result[0].exists === 1;
+    } catch (error) {
+      console.warn('Error al verificar existencia de audit_log:', error);
+      return false;
+    }
+  }
+
   // Registrar una acción en el log de auditoría
   async logAction(data: {
     tabla_afectada: string;
@@ -26,31 +45,50 @@ export class AuditService {
     ip_address?: string;
     observaciones?: string;
   }): Promise<void> {
-    const id = uuidv4();
-    const datosJson = data.datos_anteriores 
-      ? JSON.stringify(data.datos_anteriores)
-      : null;
+    // Verificar si la tabla existe antes de intentar insertar
+    const exists = await this.tableExists();
+    if (!exists) {
+      console.warn('Tabla audit_log no existe, omitiendo registro de auditoría');
+      return;
+    }
 
-    await execute(`
-      INSERT INTO audit_log (
-        id, tabla_afectada, registro_id, accion, datos_anteriores,
-        usuario_id, usuario_nombre, fecha_accion, ip_address, observaciones
-      )
-      VALUES (
-        @id, @tabla, @registroId, @accion, @datos,
-        @usuarioId, @usuarioNombre, GETDATE(), @ip, @observaciones
-      )
-    `, {
-      id,
-      tabla: data.tabla_afectada,
-      registroId: data.registro_id,
-      accion: data.accion,
-      datos: datosJson,
-      usuarioId: data.usuario_id || null,
-      usuarioNombre: data.usuario_nombre || null,
-      ip: data.ip_address || null,
-      observaciones: data.observaciones || null
-    });
+    try {
+      const id = uuidv4();
+      const datosJson = data.datos_anteriores 
+        ? JSON.stringify(data.datos_anteriores)
+        : null;
+
+      await execute(`
+        INSERT INTO audit_log (
+          id, tabla_afectada, registro_id, accion, datos_anteriores,
+          usuario_id, usuario_nombre, fecha_accion, ip_address, observaciones
+        )
+        VALUES (
+          @id, @tabla, @registroId, @accion, @datos,
+          @usuarioId, @usuarioNombre, GETDATE(), @ip, @observaciones
+        )
+      `, {
+        id,
+        tabla: data.tabla_afectada,
+        registroId: data.registro_id,
+        accion: data.accion,
+        datos: datosJson,
+        usuarioId: data.usuario_id || null,
+        usuarioNombre: data.usuario_nombre || null,
+        ip: data.ip_address || null,
+        observaciones: data.observaciones || null
+      });
+    } catch (error: any) {
+      // Si el error es que la tabla no existe o es un error de objeto inválido, ignorarlo
+      if (error?.number === 208 || error?.originalError?.number === 208 || 
+          error?.message?.includes('Invalid object name') ||
+          error?.message?.includes('audit_log')) {
+        console.warn('Error al registrar en audit_log (tabla no existe o error de objeto):', error.message);
+        return;
+      }
+      // Para otros errores, lanzar la excepción
+      throw error;
+    }
   }
 
   // Obtener logs de auditoría
@@ -62,6 +100,13 @@ export class AuditService {
     fecha_hasta?: string;
     limit?: number;
   }): Promise<AuditLog[]> {
+    // Verificar si la tabla existe antes de consultar
+    const exists = await this.tableExists();
+    if (!exists) {
+      console.warn('Tabla audit_log no existe, retornando array vacío');
+      return [];
+    }
+
     let sql = `
       SELECT 
         id,
