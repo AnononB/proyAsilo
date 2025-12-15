@@ -254,6 +254,10 @@ export const api = {
     });
   },
 
+  checkEntradaHasSalidas: async (id: ID) => {
+    return request<{ hasSalidas: boolean }>(`/entry-requests/${id}/has-salidas`);
+  },
+
   // ========== Objetos Personales ==========
   listObjects: async (patientId?: ID) => {
     const query = patientId ? `?patientId=${patientId}` : '';

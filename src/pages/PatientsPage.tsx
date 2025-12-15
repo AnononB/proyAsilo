@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, ReactNode } from "react";
+import { useEffect, useMemo, useState, ReactNode, useRef } from "react";
 import {
   TextField,
   Button,
@@ -112,6 +112,8 @@ export default function PatientsPage() {
     mouseY: number;
     patient: Patient | null;
   } | null>(null);
+  
+  const formRef = useRef<HTMLDivElement>(null);
 
   const InfoLine = ({ label, value }: { label: string; value?: ReactNode }) => (
     <Typography variant="body2">
@@ -359,6 +361,10 @@ export default function PatientsPage() {
       address: c.address
     })));
     setShowForm(true);
+    // Hacer scroll al formulario después de un pequeño delay para asegurar que se renderice
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const loadDoctorsAndNurses = async () => {
@@ -550,7 +556,7 @@ export default function PatientsPage() {
       setDeleteDialog(false);
       setPatientToDelete(null);
       load();
-      alert("Paciente eliminado correctamente. Puede restaurarse desde la base de datos si es necesario.");
+      alert("Paciente eliminado correctamente.");
     } catch (error) {
       console.error(error);
       alert("Error al eliminar paciente");
@@ -647,7 +653,15 @@ export default function PatientsPage() {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            setShowForm(!showForm);
+            if (!showForm) {
+              // Si estamos abriendo el formulario, hacer scroll después de un pequeño delay
+              setTimeout(() => {
+                formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 100);
+            }
+          }}
         >
           {showForm ? "Cancelar" : "Nuevo Paciente"}
         </Button>
@@ -706,8 +720,10 @@ export default function PatientsPage() {
       </Paper>
 
       {showForm && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" gutterBottom>Nuevo Paciente</Typography>
+        <Paper ref={formRef} sx={{ p: 2, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            {editingPatient ? "Modificar Paciente" : "Nuevo Paciente"}
+          </Typography>
           <Stack spacing={2}>
             <Typography variant="subtitle2" color="primary">Datos del Paciente</Typography>
 
@@ -1373,7 +1389,7 @@ export default function PatientsPage() {
         title="Eliminar Paciente"
         itemName={patientToDelete?.name || ""}
         itemType="Paciente"
-        warningMessage="Esta acción ocultará el paciente de todas las listas. El registro se mantendrá en la base de datos y puede restaurarse si es necesario."
+        warningMessage="Esta acción eliminará definitivamente al paciente. Si no estás seguro, considera darlo de baja en lugar de eliminarlo."
         details={patientToDelete ? [
           { label: "ID", value: patientToDelete.id },
           { label: "Nombre", value: patientToDelete.name },

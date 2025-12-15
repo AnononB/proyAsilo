@@ -14,7 +14,14 @@ import {
   IconButton,
   FormControl,
   InputLabel,
-  Select
+  Select,
+  Menu,
+  ListItemIcon,
+  ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -25,8 +32,11 @@ import {
   LocalShipping as ShippingIcon,
   Inventory as InventoryIcon,
   WarningAmber as WarningIcon,
-  QrCodeScanner as QrCodeScannerIcon
+  QrCodeScanner as QrCodeScannerIcon,
+  Edit as EditIcon,
+  FileDownload as FileDownloadIcon
 } from "@mui/icons-material";
+import * as XLSX from 'xlsx';
 import { AnimatePresence, motion } from "framer-motion";
 import Page from "../components/Page";
 import { Table } from "../components/Table";
@@ -73,6 +83,18 @@ export default function EntriesPage() {
   const [itemFechaCaducidad, setItemFechaCaducidad] = useState(""); // Para entradas: fecha de caducidad
 
   const [printEntry, setPrintEntry] = useState<EntryRequest | null>(null);
+
+  // Estados para menú contextual y acciones
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    entry: EntryRequest | null;
+  } | null>(null);
+  const [editingEntry, setEditingEntry] = useState<EntryRequest | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<EntryRequest | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [checkingSalidas, setCheckingSalidas] = useState(false);
 
   // === NUEVO: buscador local para el combo de medicamentos ===
   const [searchMedQuery, setSearchMedQuery] = useState("");
@@ -147,6 +169,7 @@ export default function EntriesPage() {
     setManualMedName("");
     setMedicationsByBarcode([]);
     setShowForm(false);
+    setEditingEntry(null);
   };
 
 
@@ -464,7 +487,7 @@ export default function EntriesPage() {
       qty: Number(itemQty)
     };
     
-    // Si es entrada, agregar unidades, nombre (siempre), código de barras y fecha de caducidad
+    // Si es entrada, agregar unidades, nombre (siempre), código de barras, fecha de caducidad y dosis sugerida
     if (entryType === "entrada") {
       newItem.unit = itemUnit.trim() || (med?.unit || "");
       // Siempre guardar el nombre del medicamento para entradas (para mantener historial)
@@ -483,6 +506,10 @@ export default function EntriesPage() {
         newItem.fechaCaducidad = fechaDate.toISOString();
       } else if (med?.expiresAt) {
         newItem.fechaCaducidad = med.expiresAt;
+      }
+      // Agregar dosis sugerida si se proporcionó
+      if (itemDosis.trim()) {
+        newItem.dosisRecomendada = itemDosis.trim();
       }
     }
 
@@ -511,6 +538,57 @@ export default function EntriesPage() {
 
   const handleRemoveItem = (id: string) => {
     setSelectedItems(prev => prev.filter(i => i.medicationId !== id));
+  };
+
+  const handleEditItem = (item: SelectedItem) => {
+    // Cargar los datos del item en los campos del formulario
+    const med = getMedById.get(item.medicationId);
+    
+    // Si el medicamento existe en la base de datos, seleccionarlo
+    if (med && !item.medicationId.startsWith('temp-')) {
+      setSelectedMedId(item.medicationId);
+      setManualMedName("");
+    } else {
+      // Si es un medicamento nuevo (temporal), usar el nombre manual
+      setSelectedMedId("");
+      setManualMedName(item.medicationName || "");
+    }
+    
+    // Cargar cantidad
+    setItemQty(item.qty.toString());
+    
+    // Cargar dosis (para entrada y salida)
+    if (entryType === "entrada" || entryType === "salida") {
+      setItemDosis(item.dosisRecomendada || "");
+    }
+    
+    // Cargar frecuencia (solo para salida)
+    if (entryType === "salida") {
+      setItemFrecuencia(item.frecuencia || "");
+    }
+    
+    // Cargar unidad (para entrada)
+    if (entryType === "entrada") {
+      setItemUnit(item.unit || "");
+    }
+    
+    // Cargar fecha de caducidad (para entrada)
+    if (entryType === "entrada" && item.fechaCaducidad) {
+      const fechaDate = new Date(item.fechaCaducidad);
+      const year = fechaDate.getFullYear();
+      const month = String(fechaDate.getMonth() + 1).padStart(2, '0');
+      const day = String(fechaDate.getDate()).padStart(2, '0');
+      setItemFechaCaducidad(`${year}-${month}-${day}`);
+    }
+    
+    // Cargar código de barras si existe
+    if (item.barcode) {
+      setBarcodeInput(item.barcode);
+      setScannedBarcode(item.barcode);
+    }
+    
+    // Eliminar el item de la lista
+    setSelectedItems(prev => prev.filter(i => i.medicationId !== item.medicationId));
   };
 
   const handleCreateEntry = async () => {
@@ -573,16 +651,26 @@ export default function EntriesPage() {
         }))
       });
 
-      const createdEntry = await api.addEntry(payload);
-      const entryTypeName = entryType === "entrada" ? "Entrada" : entryType === "salida" ? "Salida" : "Caducidad";
-      alert(
-        `${entryTypeName} registrada correctamente.\n\nFolio: ${createdEntry.folio}\n\nSe abrirá el folio para imprimir.`
-      );
-      
-      // Mostrar el folio para imprimir
-      setPrintEntry(createdEntry);
-      resetForm();
-      load();
+      if (editingEntry) {
+        // Actualizar entrada existente
+        await api.updateEntry(editingEntry.id, payload);
+        const entryTypeName = entryType === "entrada" ? "Entrada" : entryType === "salida" ? "Salida" : "Caducidad";
+        alert(`${entryTypeName} actualizada correctamente.`);
+        resetForm();
+        load();
+      } else {
+        // Crear nueva entrada
+        const createdEntry = await api.addEntry(payload);
+        const entryTypeName = entryType === "entrada" ? "Entrada" : entryType === "salida" ? "Salida" : "Caducidad";
+        alert(
+          `${entryTypeName} registrada correctamente.\n\nFolio: ${createdEntry.folio}\n\nSe abrirá el folio para imprimir.`
+        );
+        
+        // Mostrar el folio para imprimir
+        setPrintEntry(createdEntry);
+        resetForm();
+        load();
+      }
     } catch (error: any) {
       console.error("Error completo:", error);
       const errorMessage = error?.message || error?.error || "Error desconocido al registrar el movimiento";
@@ -615,58 +703,316 @@ export default function EntriesPage() {
       ? "SALIDA DE MEDICAMENTOS"
       : "REGISTRO DE CADUCIDAD";
 
+  // Funciones para menú contextual
+  const handleRowClick = (event: React.MouseEvent, entry: EntryRequest) => {
+    event.preventDefault();
+    setContextMenu(
+      contextMenu === null
+        ? {
+            mouseX: event.clientX + 2,
+            mouseY: event.clientY - 6,
+            entry: entry
+          }
+        : null
+    );
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuAction = async (action: string, entry: EntryRequest) => {
+    handleContextMenuClose();
+    
+    if (action === 'edit') {
+      // Verificar si se puede editar
+      if (entry.type === 'caducidad') {
+        alert('No se puede modificar un registro de caducidad. Son registros históricos permanentes.');
+        return;
+      }
+      
+      if (entry.type === 'entrada') {
+        try {
+          setCheckingSalidas(true);
+          const { hasSalidas } = await api.checkEntradaHasSalidas(entry.id);
+          if (hasSalidas) {
+            alert('No se puede modificar esta entrada porque ya se originaron salidas a partir de ella.');
+            setCheckingSalidas(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error verificando salidas:', error);
+          alert('Error al verificar si la entrada tiene salidas asociadas.');
+          setCheckingSalidas(false);
+          return;
+        } finally {
+          setCheckingSalidas(false);
+        }
+      }
+      
+      // Abrir formulario de edición
+      setEditingEntry(entry);
+      setEntryType(entry.type);
+      setPatientId(entry.patientId || "");
+      setDueDate(entry.dueDate ? entry.dueDate.split('T')[0] : "");
+      setComment(entry.comment || "");
+      
+      // Convertir items a SelectedItem
+      const items: SelectedItem[] = entry.items.map(item => ({
+        medicationId: item.medicationId,
+        qty: item.qty,
+        dosisRecomendada: item.dosisRecomendada,
+        frecuencia: item.frecuencia,
+        fechaCaducidad: item.fechaCaducidad,
+        medicationName: (item as any).medicationName,
+        unit: (item as any).unit
+      }));
+      setSelectedItems(items);
+      setShowForm(true);
+      
+      // Hacer scroll al formulario
+      setTimeout(() => {
+        const formElement = document.querySelector('[data-entry-form]');
+        if (formElement) {
+          formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+    } else if (action === 'delete') {
+      // Verificar si se puede eliminar
+      if (entry.type === 'caducidad') {
+        alert('No se puede eliminar un registro de caducidad. Son registros históricos permanentes.');
+        return;
+      }
+      
+      if (entry.type === 'entrada') {
+        try {
+          setCheckingSalidas(true);
+          const { hasSalidas } = await api.checkEntradaHasSalidas(entry.id);
+          if (hasSalidas) {
+            alert('No se puede eliminar esta entrada porque ya se originaron salidas a partir de ella.');
+            setCheckingSalidas(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error verificando salidas:', error);
+          alert('Error al verificar si la entrada tiene salidas asociadas.');
+          setCheckingSalidas(false);
+          return;
+        } finally {
+          setCheckingSalidas(false);
+        }
+      }
+      
+      setEntryToDelete(entry);
+      setDeleteDialog(true);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!entryToDelete) return;
+    
+    setDeleteLoading(true);
+    try {
+      await api.deleteEntry(entryToDelete.id);
+      alert(entryToDelete.type === 'salida' 
+        ? 'Salida eliminada correctamente. El inventario ha sido retornado.'
+        : 'Entrada eliminada correctamente.');
+      setDeleteDialog(false);
+      setEntryToDelete(null);
+      load();
+    } catch (error: any) {
+      console.error('Error al eliminar:', error);
+      alert(error?.message || 'Error al eliminar el registro');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleUpdateEntry = async () => {
+    if (!editingEntry) return;
+    
+    // Validaciones según el tipo
+    if (editingEntry.type === "salida") {
+      if (!patientId || selectedItems.length === 0) {
+        alert("Selecciona un paciente y al menos un medicamento");
+        return;
+      }
+    } else if (selectedItems.length === 0) {
+      alert("Agrega al menos un medicamento");
+      return;
+    }
+
+    try {
+      const payload: any = {
+        type: editingEntry.type,
+        items: selectedItems,
+        status: "completa" as const,
+        comment: comment.trim() || undefined,
+      };
+      
+      if (editingEntry.type === "salida") {
+        payload.patientId = patientId;
+        if (dueDate) {
+          payload.dueDate = new Date(dueDate).toISOString();
+        }
+      }
+
+      await api.updateEntry(editingEntry.id, payload);
+      alert("Registro actualizado correctamente");
+      resetForm();
+      setEditingEntry(null);
+      load();
+    } catch (error: any) {
+      console.error("Error completo:", error);
+      const errorMessage = error?.message || error?.error || "Error desconocido al actualizar el registro";
+      alert(`Error al actualizar el registro: ${errorMessage}`);
+    }
+  };
+
+  const handleExportToExcel = () => {
+    try {
+      // Preparar los datos para Excel
+      const excelData: any[] = [];
+
+      filteredEntries.forEach(entry => {
+        const tipo = entry.type === "entrada" ? "Entrada" : entry.type === "salida" ? "Salida" : "Caducidad";
+        
+        entry.items.forEach((item, index) => {
+          const med = getMedById.get(item.medicationId);
+          const medName = item.medicationName || med?.name || "Desconocido";
+          const medUnit = item.unit || med?.unit || "";
+
+          const row: any = {
+            "Folio": index === 0 ? entry.folio : "", // Solo mostrar folio en la primera fila del grupo
+            "Tipo": index === 0 ? tipo : "",
+            "Fecha": index === 0 ? new Date(entry.createdAt).toLocaleDateString() : "",
+            "Hora": index === 0 ? new Date(entry.createdAt).toLocaleTimeString() : "",
+            "Paciente": entry.type === "salida" && index === 0 ? getPatientName(entry.patientId) : "",
+            "Medicamento": medName,
+            "Cantidad": item.qty,
+            "Unidad": medUnit || "-",
+            "Dosis": item.dosisRecomendada || med?.dosage || "-",
+            "Frecuencia": item.frecuencia || "-",
+            "Fecha Caducidad": item.fechaCaducidad ? new Date(item.fechaCaducidad).toLocaleDateString() : "-",
+            "Estado": entry.status === "completa" ? "Completa" : "Incompleta",
+            "Comentario": entry.comment || "-"
+          };
+
+          if (entry.type === "salida" && entry.dueDate) {
+            row["Próxima Fecha"] = new Date(entry.dueDate).toLocaleDateString();
+          }
+
+          excelData.push(row);
+        });
+      });
+
+      // Crear el libro de trabajo
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Ajustar el ancho de las columnas
+      const colWidths = [
+        { wch: 18 }, // Folio
+        { wch: 12 }, // Tipo
+        { wch: 12 }, // Fecha
+        { wch: 10 }, // Hora
+        { wch: 25 }, // Paciente
+        { wch: 30 }, // Medicamento
+        { wch: 10 }, // Cantidad
+        { wch: 12 }, // Unidad
+        { wch: 15 }, // Dosis
+        { wch: 20 }, // Frecuencia
+        { wch: 15 }, // Fecha Caducidad
+        { wch: 12 }, // Estado
+        { wch: 30 }, // Comentario
+        { wch: 15 }  // Próxima Fecha
+      ];
+      ws['!cols'] = colWidths;
+
+      // Agregar la hoja al libro
+      const sheetName = typeFilter === "entrada" ? "Entradas" : typeFilter === "salida" ? "Salidas" : "Caducidades";
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+      // Generar el nombre del archivo con fecha
+      const fecha = new Date().toISOString().split('T')[0];
+      const fileName = `Reporte_${sheetName}_${fecha}.xlsx`;
+
+      // Descargar el archivo
+      XLSX.writeFile(wb, fileName);
+      
+      alert(`Reporte exportado correctamente: ${fileName}`);
+    } catch (error) {
+      console.error("Error al exportar a Excel:", error);
+      alert("Error al exportar el reporte a Excel");
+    }
+  };
+
   return (
     <Page>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5" fontWeight={700}>Entradas y Salidas</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setShowForm(!showForm)}
-        >
-          {showForm ? "Cancelar" : "Nuevo Registro"}
-        </Button>
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<FileDownloadIcon />}
+            onClick={handleExportToExcel}
+            disabled={filteredEntries.length === 0}
+          >
+            Exportar a Excel
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setShowForm(!showForm)}
+          >
+            {showForm ? "Cancelar" : "Nuevo Registro"}
+          </Button>
+        </Stack>
       </Stack>
 
       <Alert severity="info" icon={<ReceiptIcon />} sx={{ mb: 2 }}>
         Sistema de folios automático para control de entradas, salidas y caducidad del almacén.
       </Alert>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ minWidth: 100 }}>Filtrar por tipo:</Typography>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Filtrar por tipo</InputLabel>
-            <Select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-              label="Filtrar por tipo"
-            >
-              <MenuItem value="entrada">Entradas</MenuItem>
-              <MenuItem value="salida">Salidas</MenuItem>
-              <MenuItem value="caducidad">Caducidad</MenuItem>
-            </Select>
-          </FormControl>
-        </Stack>
+      {!showForm && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ minWidth: 100 }}>Filtrar por tipo:</Typography>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Filtrar por tipo</InputLabel>
+              <Select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+                label="Filtrar por tipo"
+              >
+                <MenuItem value="entrada">Entradas</MenuItem>
+                <MenuItem value="salida">Salidas</MenuItem>
+                <MenuItem value="caducidad">Caducidad</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
 
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Typography variant="subtitle2" sx={{ minWidth: 100 }}>Buscar por folio:</Typography>
-        <TextField
-          size="small"
-            placeholder="Buscar folio..."
-          value={searchFolio}
-          onChange={(e) => setSearchFolio(e.target.value)}
-          fullWidth
-          InputProps={{
-            startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} />
-          }}
-        />
-        </Stack>
-      </Paper>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Typography variant="subtitle2" sx={{ minWidth: 100 }}>Buscar por folio:</Typography>
+          <TextField
+            size="small"
+              placeholder="Buscar folio..."
+            value={searchFolio}
+            onChange={(e) => setSearchFolio(e.target.value)}
+            fullWidth
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} />
+            }}
+          />
+          </Stack>
+        </Paper>
+      )}
 
       {showForm && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" gutterBottom>Nuevo Registro</Typography>
+        <Paper data-entry-form sx={{ p: 2, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            {editingEntry ? "Modificar Registro" : "Nuevo Registro"}
+          </Typography>
           <Stack spacing={2}>
             <TextField
               label="Tipo de movimiento *"
@@ -740,7 +1086,20 @@ export default function EntriesPage() {
                   const medicationUnit = item.unit || med?.unit || "unidades";
                   
                   return (
-                    <Paper key={item.medicationId} sx={{ p: 1.5, bgcolor: "#f5f5f5" }}>
+                    <Paper 
+                      key={item.medicationId} 
+                      sx={{ 
+                        p: 1.5, 
+                        bgcolor: "#f5f5f5",
+                        cursor: 'pointer',
+                        '&:hover': {
+                          bgcolor: "#e8e8e8",
+                          border: "1px solid #f97316"
+                        },
+                        transition: 'all 0.2s'
+                      }}
+                      onClick={() => handleEditItem(item)}
+                    >
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="body2" fontWeight={600}>
@@ -749,6 +1108,12 @@ export default function EntriesPage() {
                           <Typography variant="caption" color="text.secondary" display="block">
                             Cantidad: {item.qty} {medicationUnit}
                           </Typography>
+
+                          {entryType === "entrada" && item.dosisRecomendada && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Dosis: {item.dosisRecomendada}
+                            </Typography>
+                          )}
 
                           {entryType === "salida" && item.dosisRecomendada && (
                             <Typography variant="caption" color="text.secondary" display="block">
@@ -766,11 +1131,18 @@ export default function EntriesPage() {
                               Caducidad: {new Date(item.fechaCaducidad).toLocaleDateString()}
                             </Typography>
                           )}
+                          
+                          <Typography variant="caption" color="primary" sx={{ mt: 0.5, fontStyle: 'italic' }}>
+                            Clic para editar
+                          </Typography>
                         </Box>
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={() => handleRemoveItem(item.medicationId)}
+                          onClick={(e) => {
+                            e.stopPropagation(); // Evitar que se active el onClick del Paper
+                            handleRemoveItem(item.medicationId);
+                          }}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>
@@ -1033,6 +1405,17 @@ export default function EntriesPage() {
                         : "Especifica las unidades del medicamento"}
                     />
                     <TextField
+                      label="Dosis sugerida"
+                      size="small"
+                      value={itemDosis}
+                      onChange={(e) => setItemDosis(e.target.value)}
+                      fullWidth
+                      placeholder="Ej: 500mg, 1 tableta, 10ml, etc."
+                      helperText={selectedMedId && getMedById.get(selectedMedId)?.dosage 
+                        ? `Dosis del medicamento: ${getMedById.get(selectedMedId)?.dosage}`
+                        : "Especifica la dosis sugerida del medicamento"}
+                    />
+                    <TextField
                       label="Fecha de caducidad"
                       type="date"
                       size="small"
@@ -1110,6 +1493,14 @@ export default function EntriesPage() {
               El folio se generará automáticamente al guardar el registro.
             </Alert>
 
+            {selectedItems.length === 0 && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  <strong>Importante:</strong> Debes agregar al menos un medicamento usando el botón "Agregar" antes de poder guardar el registro.
+                </Typography>
+              </Alert>
+            )}
+
             <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
               <Button variant="outlined" onClick={resetForm} fullWidth>
                 Cancelar
@@ -1119,10 +1510,51 @@ export default function EntriesPage() {
                 onClick={handleCreateEntry}
                 disabled={(entryType === "salida" && !patientId) || selectedItems.length === 0}
                 fullWidth
+                title={
+                  selectedItems.length === 0
+                    ? "Agrega al menos un medicamento usando el botón 'Agregar' antes de guardar"
+                    : entryType === "salida" && !patientId
+                    ? "Selecciona un paciente antes de guardar"
+                    : "Guardar registro"
+                }
               >
-                Guardar Registro
+                {editingEntry ? "Guardar Cambios" : "Guardar Registro"}
               </Button>
             </Stack>
+          </Stack>
+        </Paper>
+      )}
+
+      {showForm && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ minWidth: 100 }}>Filtrar por tipo:</Typography>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Filtrar por tipo</InputLabel>
+              <Select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+                label="Filtrar por tipo"
+              >
+                <MenuItem value="entrada">Entradas</MenuItem>
+                <MenuItem value="salida">Salidas</MenuItem>
+                <MenuItem value="caducidad">Caducidad</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Typography variant="subtitle2" sx={{ minWidth: 100 }}>Buscar por folio:</Typography>
+          <TextField
+            size="small"
+              placeholder="Buscar folio..."
+            value={searchFolio}
+            onChange={(e) => setSearchFolio(e.target.value)}
+            fullWidth
+            InputProps={{
+              startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} />
+            }}
+          />
           </Stack>
         </Paper>
       )}
@@ -1131,9 +1563,18 @@ export default function EntriesPage() {
         Mostrando {filteredEntries.length} de {entries.length} registros
       </Typography>
 
+      {/* Mensaje informativo para entradas y salidas */}
+      {(typeFilter === "entrada" || typeFilter === "salida") && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            <strong>Nota:</strong> Para imprimir, modificar o eliminar un registro, haz clic sobre la fila correspondiente en la tabla.
+          </Typography>
+        </Alert>
+      )}
+
       {/* Headers dinámicos según el tipo de filtro */}
       {typeFilter === "salida" && (
-        <Table headers={["Folio", "Tipo", "Paciente", "Items", "Total", "Fecha", "Estado", "Acciones"]}>
+        <Table headers={["Folio", "Tipo", "Paciente", "Items", "Total", "Fecha", "Estado"]}>
         <AnimatePresence initial={false}>
           {filteredEntries.map(entry => (
             <motion.tr
@@ -1142,6 +1583,15 @@ export default function EntriesPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25 }}
+              onClick={(e) => handleRowClick(e, entry)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handleRowClick(e, entry);
+              }}
+              style={{ 
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
             >
               <td style={{ padding: 8, fontFamily: "monospace", fontWeight: 700, color: "#f97316" }}>
                 {entry.folio}
@@ -1184,16 +1634,6 @@ export default function EntriesPage() {
                     size="small"
                   />
                 </td>
-                <td style={{ padding: 8 }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<PrintIcon />}
-                    onClick={() => setPrintEntry(entry)}
-                  >
-                    Imprimir
-                  </Button>
-                </td>
               </motion.tr>
             ))}
           </AnimatePresence>
@@ -1201,7 +1641,7 @@ export default function EntriesPage() {
       )}
 
       {typeFilter === "entrada" && (
-        <Table headers={["Folio", "Tipo", "Items", "Total", "Fecha", "Estado", "Acciones"]}>
+        <Table headers={["Folio", "Tipo", "Items", "Total", "Fecha", "Estado"]}>
           <AnimatePresence initial={false}>
             {filteredEntries.map(entry => (
               <motion.tr
@@ -1210,6 +1650,15 @@ export default function EntriesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.25 }}
+                onClick={(e) => handleRowClick(e, entry)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  handleRowClick(e, entry);
+                }}
+                style={{ 
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}
               >
                 <td style={{ padding: 8, fontFamily: "monospace", fontWeight: 700, color: "#f97316" }}>
                   {entry.folio}
@@ -1223,9 +1672,10 @@ export default function EntriesPage() {
                       const med = getMedById.get(item.medicationId);
                       const medName = item.medicationName || med?.name || "Desconocido";
                       const medUnit = item.unit || med?.unit || "";
+                      const dosis = item.dosisRecomendada || med?.dosage || "";
                       return (
                         <Typography key={index} variant="caption" display="block">
-                          • {medName}{medUnit ? ` (${medUnit})` : ""}: {item.qty}
+                          • {medName}{medUnit ? ` (${medUnit})` : ""}: {item.qty}{dosis ? ` - Dosis: ${dosis}` : ""}
                         </Typography>
                       );
                     })}
@@ -1249,16 +1699,6 @@ export default function EntriesPage() {
                     size="small"
                   />
                 </td>
-                <td style={{ padding: 8 }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<PrintIcon />}
-                    onClick={() => setPrintEntry(entry)}
-                  >
-                    Imprimir
-                  </Button>
-                </td>
               </motion.tr>
             ))}
           </AnimatePresence>
@@ -1266,7 +1706,7 @@ export default function EntriesPage() {
       )}
 
       {typeFilter === "caducidad" && (
-        <Table headers={["Folio", "Tipo", "Items", "Total", "Fecha", "Estado", "Acciones"]}>
+        <Table headers={["Folio", "Tipo", "Items", "Total", "Fecha", "Estado"]}>
           <AnimatePresence initial={false}>
             {filteredEntries.map(entry => (
               <motion.tr
@@ -1314,21 +1754,110 @@ export default function EntriesPage() {
                   size="small"
                 />
               </td>
-              <td style={{ padding: 8 }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<PrintIcon />}
-                  onClick={() => setPrintEntry(entry)}
-                >
-                  Imprimir
-                </Button>
-              </td>
             </motion.tr>
           ))}
         </AnimatePresence>
       </Table>
       )}
+
+      {/* Menú contextual para acciones */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        {contextMenu?.entry && (
+          <>
+            <MenuItem onClick={() => {
+              handleContextMenuClose();
+              setPrintEntry(contextMenu.entry!);
+            }}>
+              <ListItemIcon>
+                <PrintIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Imprimir</ListItemText>
+            </MenuItem>
+            {contextMenu.entry.type !== 'caducidad' && (
+              <MenuItem onClick={() => handleContextMenuAction('edit', contextMenu.entry!)}>
+                <ListItemIcon>
+                  <EditIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Modificar</ListItemText>
+              </MenuItem>
+            )}
+            {contextMenu.entry.type !== 'caducidad' && (
+              <MenuItem onClick={() => handleContextMenuAction('delete', contextMenu.entry!)}>
+                <ListItemIcon>
+                  <DeleteIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Eliminar</ListItemText>
+              </MenuItem>
+            )}
+          </>
+        )}
+      </Menu>
+
+      {/* Diálogo de confirmación para eliminar */}
+      <Dialog
+        open={deleteDialog}
+        onClose={() => {
+          setDeleteDialog(false);
+          setEntryToDelete(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Eliminar {entryToDelete?.type === 'entrada' ? 'Entrada' : entryToDelete?.type === 'salida' ? 'Salida' : 'Registro'}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="warning">
+              <Typography variant="body2" fontWeight={600} gutterBottom>
+                ¿Estás seguro de eliminar este registro?
+              </Typography>
+              {entryToDelete && (
+                <Typography variant="body2">
+                  <strong>Folio:</strong> {entryToDelete.folio}<br />
+                  <strong>Tipo:</strong> {entryToDelete.type === 'entrada' ? 'Entrada' : entryToDelete.type === 'salida' ? 'Salida' : 'Caducidad'}<br />
+                  <strong>Fecha:</strong> {new Date(entryToDelete.createdAt).toLocaleDateString()}
+                </Typography>
+              )}
+            </Alert>
+            {entryToDelete?.type === 'salida' && (
+              <Alert severity="info">
+                Al eliminar esta salida, el inventario de los medicamentos será retornado automáticamente.
+              </Alert>
+            )}
+            {entryToDelete?.type === 'entrada' && (
+              <Alert severity="info">
+                Al eliminar esta entrada, el inventario de los medicamentos será reducido automáticamente.
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setDeleteDialog(false);
+            setEntryToDelete(null);
+          }}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmDelete}
+            disabled={deleteLoading || checkingSalidas}
+          >
+            {deleteLoading ? "Eliminando..." : "Eliminar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {filteredEntries.length === 0 && (
         <Alert severity="info" sx={{ mt: 2 }}>
@@ -1408,7 +1937,10 @@ export default function EntriesPage() {
                       <th style={{ padding: 8, textAlign: "left" }}>Caducidad</th>
                     )}
                     {printEntry.type === "entrada" && (
-                      <th style={{ padding: 8, textAlign: "left" }}>Caducidad</th>
+                      <>
+                        <th style={{ padding: 8, textAlign: "left" }}>Dosis</th>
+                        <th style={{ padding: 8, textAlign: "left" }}>Caducidad</th>
+                      </>
                     )}
                   </tr>
                 </thead>
@@ -1438,9 +1970,12 @@ export default function EntriesPage() {
                           </td>
                         )}
                         {printEntry.type === "entrada" && (
-                          <td style={{ padding: 8 }}>
-                            {item.fechaCaducidad ? new Date(item.fechaCaducidad).toLocaleDateString() : "-"}
-                          </td>
+                          <>
+                            <td style={{ padding: 8 }}>{item.dosisRecomendada || "-"}</td>
+                            <td style={{ padding: 8 }}>
+                              {item.fechaCaducidad ? new Date(item.fechaCaducidad).toLocaleDateString() : "-"}
+                            </td>
+                          </>
                         )}
                       </tr>
                     );
@@ -1495,6 +2030,7 @@ export default function EntriesPage() {
                         ` : printEntry.type === "caducidad" ? `
                           <th style="padding: 8px; text-align: left;">Caducidad</th>
                         ` : printEntry.type === "entrada" ? `
+                          <th style="padding: 8px; text-align: left;">Dosis</th>
                           <th style="padding: 8px; text-align: left;">Caducidad</th>
                         ` : ""}
                       </tr>
@@ -1516,6 +2052,7 @@ export default function EntriesPage() {
                             ` : printEntry.type === "caducidad" ? `
                               <td style="padding: 8px;">${cad}</td>
                             ` : printEntry.type === "entrada" ? `
+                              <td style="padding: 8px;">${item.dosisRecomendada || "-"}</td>
                               <td style="padding: 8px;">${cad}</td>
                             ` : ""}
                           </tr>
@@ -1526,7 +2063,7 @@ export default function EntriesPage() {
                       <tr style="border-top: 2px solid #000; font-weight: 700;">
                         <td style="padding: 8px;">TOTAL</td>
                         <td style="padding: 8px; text-align: right;">${getTotalItems(printEntry)} items</td>
-                        ${printEntry.type === "salida" ? `<td colspan="3"></td>` : printEntry.type === "caducidad" ? `<td></td>` : printEntry.type === "entrada" ? `<td></td>` : ""}
+                        ${printEntry.type === "salida" ? `<td colspan="3"></td>` : printEntry.type === "caducidad" ? `<td></td>` : printEntry.type === "entrada" ? `<td colspan="2"></td>` : ""}
                       </tr>
                     </tfoot>
                   </table>
@@ -1545,3 +2082,4 @@ export default function EntriesPage() {
     </Page>
   );
 }
+

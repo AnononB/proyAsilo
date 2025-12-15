@@ -44,7 +44,7 @@ export default function ConfirmDeleteDialog({
       </DialogTitle>
       <DialogContent dividers>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          Esta acción ocultará el {itemType.toLowerCase()} de todas las listas. El registro se mantendrá en la base de datos.
+          Esta acción eliminará definitivamente el {itemType.toLowerCase()}. Esta operación no se puede deshacer.
         </Alert>
 
         <Box sx={{ mb: 2 }}>

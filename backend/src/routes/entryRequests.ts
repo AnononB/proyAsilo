@@ -155,6 +155,25 @@ router.put('/:id', async (req, res) => {
       return res.json(entryRequest);
     }
     
+    // Validaciones de negocio
+    const existing = await separateEntryService.getEntryRequestById(req.params.id);
+    if (!existing) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' });
+    }
+    
+    // Caducidad no se puede modificar
+    if (existing.type === 'caducidad') {
+      return res.status(400).json({ error: 'No se puede modificar un registro de caducidad. Son registros históricos permanentes.' });
+    }
+    
+    // Entrada solo se puede modificar si no tiene salidas asociadas
+    if (existing.type === 'entrada') {
+      const hasSalidas = await separateEntryService.entradaHasSalidas(req.params.id);
+      if (hasSalidas) {
+        return res.status(400).json({ error: 'No se puede modificar esta entrada porque ya se originaron salidas a partir de ella.' });
+      }
+    }
+    
     const entryRequest = await separateEntryService.updateEntryRequest(req.params.id, req.body);
     if (!entryRequest) {
       return res.status(404).json({ error: 'Solicitud no encontrada' });
@@ -162,6 +181,29 @@ router.put('/:id', async (req, res) => {
     res.json(entryRequest);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// Verificar si una entrada tiene salidas asociadas
+router.get('/:id/has-salidas', async (req, res) => {
+  try {
+    if (isMockMode()) {
+      return res.json({ hasSalidas: false });
+    }
+    
+    const entry = await separateEntryService.getEntryRequestById(req.params.id);
+    if (!entry) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' });
+    }
+    
+    if (entry.type !== 'entrada') {
+      return res.json({ hasSalidas: false });
+    }
+    
+    const hasSalidas = await separateEntryService.entradaHasSalidas(req.params.id);
+    res.json({ hasSalidas });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -182,7 +224,7 @@ router.delete('/:id', async (req, res) => {
     }
     res.json({ message: 'Solicitud eliminada correctamente' });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(400).json({ error: error.message });
   }
 });
 

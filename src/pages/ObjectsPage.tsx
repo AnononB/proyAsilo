@@ -29,12 +29,13 @@ import { api } from "../api/client";
 import { PersonalObject, Patient } from "../types";
 import ConfirmDeleteDialog from "../components/ConfirmDeleteDialog";
 
-type FilterType = "objeto_az" | "propietario_az" | "fecha_registro";
+type FilterType = "objeto_az" | "propietario_az" | "fecha_mayor_menor" | "fecha_menor_mayor";
 
 const FILTER_OPTIONS: { label: string; value: FilterType }[] = [
   { label: "Objeto (A-Z)", value: "objeto_az" },
   { label: "Propietario (A-Z)", value: "propietario_az" },
-  { label: "Fecha (Registro)", value: "fecha_registro" }
+  { label: "Fecha (Mayor a menor)", value: "fecha_mayor_menor" },
+  { label: "Fecha (Menor a mayor)", value: "fecha_menor_mayor" }
 ];
 
 export default function ObjectsPage() {
@@ -121,10 +122,16 @@ export default function ObjectsPage() {
           return (a.name || "").localeCompare(b.name || "");
         case "propietario_az":
           return (a.patientName || "").localeCompare(b.patientName || "");
-        case "fecha_registro":
-          const dateA = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
-          const dateB = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
-          return dateB - dateA; // Más reciente primero
+        case "fecha_mayor_menor":
+          // Mayor a menor: fecha más antigua primero (ascendente)
+          const dateA_asc = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+          const dateB_asc = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+          return dateA_asc - dateB_asc;
+        case "fecha_menor_mayor":
+          // Menor a mayor: fecha más reciente primero (descendente)
+          const dateA_desc = a.receivedAt ? new Date(a.receivedAt).getTime() : 0;
+          const dateB_desc = b.receivedAt ? new Date(b.receivedAt).getTime() : 0;
+          return dateB_desc - dateA_desc;
         default:
           return 0;
       }
@@ -280,8 +287,8 @@ export default function ObjectsPage() {
         </Stack>
 
       <Alert severity="info" sx={{ mb: 2 }}>
-        <Typography variant="body2" component="span">
-          <strong>Para modificar o eliminar:</strong> Haz clic en la tabla sobre el objeto para abrir el menú de opciones.
+        <Typography variant="body2">
+          <strong>Nota:</strong> Para modificar o eliminar un objeto, haz clic sobre el renglón correspondiente en la tabla.
         </Typography>
       </Alert>
 

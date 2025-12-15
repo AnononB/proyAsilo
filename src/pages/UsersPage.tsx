@@ -21,7 +21,10 @@ import {
   Select,
   FormControl,
   InputLabel,
-  InputAdornment
+  InputAdornment,
+  Menu,
+  ListItemIcon,
+  ListItemText
 } from "@mui/material";
 import { Search as SearchIcon } from "@mui/icons-material";
 import {
@@ -30,7 +33,8 @@ import {
   Key as KeyIcon,
   Person as PersonIcon,
   Refresh as RefreshIcon,
-  DeleteOutline as DeleteIcon
+  DeleteOutline as DeleteIcon,
+  Edit as EditIcon
 } from "@mui/icons-material";
 import { AnimatePresence, motion } from "framer-motion";
 import Page from "../components/Page";
@@ -78,6 +82,7 @@ export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<User["role"] | "">("");
@@ -102,6 +107,13 @@ export default function UsersPage() {
   const [showCreateRoleDialog, setShowCreateRoleDialog] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
   const [selectedPermissions, setSelectedPermissions] = useState<Permission[]>([]);
+  
+  // Estados para menú contextual
+  const [contextMenu, setContextMenu] = useState<{
+    mouseX: number;
+    mouseY: number;
+    user: User | null;
+  } | null>(null);
 
   // Función para aplicar filtros (rol y búsqueda)
   const applyFilters = (userList: User[]) => {
@@ -178,6 +190,7 @@ export default function UsersPage() {
     setBirthDate("");
     setPassword("");
     setShowForm(false);
+    setEditingUser(null);
   };
 
   const validateEmail = useMemo(
@@ -224,11 +237,110 @@ export default function UsersPage() {
     }
   };
 
+  const handleUpdateUser = async () => {
+    if (!editingUser || !name.trim() || !email.trim() || !validateEmail(email) || !role) {
+      alert("Por favor completa nombre, correo válido y selecciona un rol.");
+      return;
+    }
+
+    const ageValue = age.trim() ? Number(age) : undefined;
+    if (ageValue !== undefined && (Number.isNaN(ageValue) || ageValue < 0)) {
+      alert("La edad debe ser un número válido.");
+      return;
+    }
+
+    const birthDateValue = birthDate.trim() ? birthDate : undefined;
+
+    // Determinar si es un rol personalizado
+    const isCustomRole = customRoles.some(cr => cr.id === role);
+    const roleToSend = isCustomRole ? "usuario" : role; // Enviar "usuario" como base si es personalizado
+    const customRoleId = isCustomRole ? role : undefined;
+
+    try {
+      const updateData: any = {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role: roleToSend,
+        age: ageValue,
+        birthDate: birthDateValue,
+        customRoleId: customRoleId
+      };
+
+      // Solo incluir contraseña si se proporcionó una nueva
+      if (password.trim()) {
+        updateData.password = password.trim();
+      }
+
+      await api.updateUser(editingUser.id, updateData);
+      
+      setSuccessMessage(`Usuario ${name.trim()} actualizado correctamente.`);
+      resetForm();
+      load();
+    } catch (error: any) {
+      console.error(error);
+      alert(error?.message || "Error al actualizar usuario");
+    }
+  };
+
   const handleDeleteUser = async (user: User) => {
     if (!isAdmin) return;
     setSelectedUser(user);
     setDeletePassword("");
     setDeleteDialog(true);
+  };
+
+  // Funciones para menú contextual
+  const handleRowClick = (event: React.MouseEvent, user: User) => {
+    if (!isAdmin) return; // Solo administradores pueden usar el menú
+    event.preventDefault();
+    setContextMenu(
+      contextMenu === null
+        ? {
+            mouseX: event.clientX + 2,
+            mouseY: event.clientY - 6,
+            user: user
+          }
+        : null
+    );
+  };
+
+  const handleContextMenuClose = () => {
+    setContextMenu(null);
+  };
+
+  const handleContextMenuAction = (action: string, user: User) => {
+    handleContextMenuClose();
+    
+    switch (action) {
+      case 'edit':
+        openEditForm(user);
+        break;
+      case 'changePassword':
+        openChangePassword(user);
+        break;
+      case 'delete':
+        handleDeleteUser(user);
+        break;
+    }
+  };
+
+  const openEditForm = (user: User) => {
+    setEditingUser(user);
+    setName(user.name);
+    setEmail(user.email || "");
+    // Si tiene rol personalizado, usar el ID del rol personalizado, sino el rol base
+    setRole(user.customRoleId || user.role || "");
+    setAge(user.age ? String(user.age) : "");
+    setBirthDate(user.birthDate ? user.birthDate.split('T')[0] : "");
+    setPassword(""); // No cargar la contraseña por seguridad
+    setShowForm(true);
+    // Hacer scroll al formulario después de un pequeño delay
+    setTimeout(() => {
+      const formElement = document.querySelector('[data-user-form]');
+      if (formElement) {
+        formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   };
 
   const confirmDeleteUser = async () => {
@@ -365,6 +477,14 @@ export default function UsersPage() {
         </Alert>
       )}
 
+      {isAdmin && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2" component="span">
+            <strong>Para cambiar contraseña o eliminar:</strong> Haz clic en la tabla sobre el usuario para abrir el menú de opciones.
+          </Typography>
+        </Alert>
+      )}
+
       <Paper sx={{ p: 2, mb: 2 }}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
           {/* Botón "Todos" */}
@@ -431,8 +551,10 @@ export default function UsersPage() {
       </Paper>
 
       {isAdmin && showForm && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Typography variant="h6" gutterBottom>Nuevo Usuario</Typography>
+        <Paper data-user-form sx={{ p: 2, mb: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            {editingUser ? "Modificar Usuario" : "Nuevo Usuario"}
+          </Typography>
           <Stack spacing={2}>
             <TextField
               label="Nombre completo *"
@@ -525,13 +647,18 @@ export default function UsersPage() {
             </Stack>
 
             <TextField
-              label="Contraseña *"
+              label={editingUser ? "Nueva contraseña (opcional)" : "Contraseña *"}
               type="password"
               size="small"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               fullWidth
-              helperText="Comparte esta contraseña con el usuario asignado."
+              required={!editingUser}
+              helperText={
+                editingUser 
+                  ? "Deja en blanco si no deseas cambiar la contraseña. Si ingresas una nueva, debe tener al menos 8 caracteres."
+                  : "Comparte esta contraseña con el usuario asignado."
+              }
             />
 
             {role && (
@@ -553,17 +680,17 @@ export default function UsersPage() {
               </Button>
               <Button
                 variant="contained"
-                onClick={handleCreateUser}
+                onClick={editingUser ? handleUpdateUser : handleCreateUser}
                 disabled={
                   !name.trim() ||
                   !email.trim() ||
                   !validateEmail(email) ||
-                  !password.trim() ||
-                  !role
+                  !role ||
+                  (!editingUser && !password.trim()) // Solo requerir contraseña al crear
                 }
                 fullWidth
               >
-                Crear Usuario
+                {editingUser ? "Guardar Cambios" : "Crear Usuario"}
               </Button>
             </Stack>
           </Stack>
@@ -585,7 +712,7 @@ export default function UsersPage() {
           Cargando usuarios, por favor espere...
         </Alert>
       ) : (
-        <Table headers={["Nombre", "Correo", "Rol", "Edad", "Año nacimiento", "Fecha de creación", "Estado", "Acciones"]}>
+        <Table headers={["Nombre", "Correo", "Rol", "Edad", "Año nacimiento", "Fecha de creación", "Estado"]}>
         <AnimatePresence initial={false}>
           {filteredUsers.map(user => (
             <motion.tr
@@ -594,6 +721,17 @@ export default function UsersPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.25 }}
+              onClick={(e) => handleRowClick(e, user)}
+              onContextMenu={(e) => {
+                if (isAdmin) {
+                  e.preventDefault();
+                  handleRowClick(e, user);
+                }
+              }}
+              style={{ 
+                cursor: isAdmin ? 'pointer' : 'default',
+                userSelect: 'none'
+              }}
             >
               <td style={{ padding: 8, fontWeight: 600 }}>{user.name}</td>
               <td style={{ padding: 8, fontSize: 12 }}>{user.email}</td>
@@ -623,33 +761,6 @@ export default function UsersPage() {
                   <Chip label="Activo" color="success" size="small" />
                 )}
               </td>
-              <td style={{ padding: 8 }}>
-                {isAdmin ? (
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<RefreshIcon />}
-                      onClick={() => openChangePassword(user)}
-                    >
-                      Cambiar contraseña
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      onClick={() => handleDeleteUser(user)}
-                    >
-                      Eliminar
-                    </Button>
-                  </Stack>
-                ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    Solo administradores
-                  </Typography>
-                )}
-              </td>
             </motion.tr>
           ))}
         </AnimatePresence>
@@ -661,6 +772,41 @@ export default function UsersPage() {
           No se encontraron usuarios.
         </Alert>
       )}
+
+      {/* Menú contextual para acciones del usuario */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextMenuClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        {contextMenu?.user && (
+          <>
+            <MenuItem onClick={() => handleContextMenuAction('edit', contextMenu.user!)}>
+              <ListItemIcon>
+                <EditIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Modificar</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleContextMenuAction('changePassword', contextMenu.user!)}>
+              <ListItemIcon>
+                <RefreshIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Cambiar contraseña</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleContextMenuAction('delete', contextMenu.user!)}>
+              <ListItemIcon>
+                <DeleteIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Eliminar</ListItemText>
+            </MenuItem>
+          </>
+        )}
+      </Menu>
 
       <Dialog
         open={changePasswordDialog}

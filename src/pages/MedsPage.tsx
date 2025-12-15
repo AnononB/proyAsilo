@@ -14,8 +14,10 @@ import {
 import {
   Search as SearchIcon,
   Warning as WarningIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  FileDownload as FileDownloadIcon
 } from "@mui/icons-material";
+import * as XLSX from 'xlsx';
 import { AnimatePresence, motion } from "framer-motion";
 import Page from "../components/Page";
 import { Table } from "../components/Table";
@@ -119,10 +121,87 @@ export default function MedsPage() {
     }
   };
 
+  const handleExportToExcel = () => {
+    try {
+      // Preparar los datos para Excel
+      const excelData = filteredItems.map(med => {
+        const expiryDate = med.expiresAt ? new Date(med.expiresAt) : null;
+        let estado = "Vigente";
+        if (expiryDate) {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          expiryDate.setHours(0, 0, 0, 0);
+          if (expiryDate <= now) {
+            estado = "CADUCADO";
+          } else {
+            const threeMonthsFromNow = new Date(now);
+            threeMonthsFromNow.setMonth(now.getMonth() + 3);
+            if (expiryDate >= now && expiryDate <= threeMonthsFromNow) {
+              estado = "Por caducar";
+            }
+          }
+        }
+
+        return {
+          "Medicamento": med.name,
+          "Cantidad": med.qty,
+          "Unidad": med.unit || "-",
+          "Dosis": med.dosage || "-",
+          "Fecha de Caducidad": med.expiresAt ? new Date(med.expiresAt).toLocaleDateString() : "-",
+          "Estado": estado,
+          "Código de Barras": med.barcode || "-",
+          "Fecha de Creación": med.createdAt ? new Date(med.createdAt).toLocaleDateString() : "-",
+          "Creado por": med.createdByName || "-"
+        };
+      });
+
+      // Crear el libro de trabajo
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Ajustar el ancho de las columnas
+      const colWidths = [
+        { wch: 30 }, // Medicamento
+        { wch: 12 }, // Cantidad
+        { wch: 15 }, // Unidad
+        { wch: 15 }, // Dosis
+        { wch: 18 }, // Fecha de Caducidad
+        { wch: 15 }, // Estado
+        { wch: 20 }, // Código de Barras
+        { wch: 18 }, // Fecha de Creación
+        { wch: 20 }  // Creado por
+      ];
+      ws['!cols'] = colWidths;
+
+      // Agregar la hoja al libro
+      XLSX.utils.book_append_sheet(wb, ws, "Stock de Medicamentos");
+
+      // Generar el nombre del archivo con fecha
+      const fecha = new Date().toISOString().split('T')[0];
+      const fileName = `Stock_Medicamentos_${fecha}.xlsx`;
+
+      // Descargar el archivo
+      XLSX.writeFile(wb, fileName);
+      
+      alert(`Reporte exportado correctamente: ${fileName}`);
+    } catch (error) {
+      console.error("Error al exportar a Excel:", error);
+      alert("Error al exportar el reporte a Excel");
+    }
+  };
+
   return (
     <Page>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5" fontWeight={700}>Medicamentos</Typography>
+        <Button
+          variant="outlined"
+          startIcon={<FileDownloadIcon />}
+          onClick={handleExportToExcel}
+          disabled={loading || filteredItems.length === 0}
+        >
+          Exportar a Excel
+        </Button>
       </Stack>
       
       <Alert severity="info" sx={{ mb: 2 }}>
